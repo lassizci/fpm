@@ -127,7 +127,7 @@ class FPM::Source::Gem < FPM::Source
     system(*args)
 
     tar(tar_path, @paths.map { |p| ".#{p}" }, tmpdir)
-    FileUtils.rm_r(tmpdir)
+    ::FileUtils.rm_r(tmpdir)
 
     # TODO(sissel): Make a helper method.
     system(*["gzip", "-f", tar_path])
