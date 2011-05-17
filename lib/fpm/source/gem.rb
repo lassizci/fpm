@@ -94,30 +94,40 @@ class FPM::Source::Gem < FPM::Source
   def make_tarball!(tar_path, builddir)
     tmpdir = "#{tar_path}.dir"
     gem = @paths.first
+    temp_paths = []
+    @paths = []
     if self[:prefix]
-      installdir = "#{tmpdir}/#{self[:prefix]}"
+      temp_paths << installdir = "#{tmpdir}/#{self[:prefix]}"
       # TODO(sissel): Overwriting @paths is bad mojo and confusing...
-      @paths = [ self[:prefix] ]
+      @paths << self[:prefix]
     else
-      installdir = "#{tmpdir}/#{::Gem::dir}"
-      @paths = [ ::Gem::dir ]
+      # by default, use the binary and install directories from Gem
+      temp_paths << installdir = "#{tmpdir}/#{::Gem::dir}"
+      @paths << ::Gem::dir
     end
-    ::FileUtils.mkdir_p(installdir)
-    args = ["gem", "install", "--quiet", "--no-ri", "--no-rdoc",
-       "--install-dir", installdir, "--ignore-dependencies", gem]
-    system(*args)
-
-    if not self[:executables].empty? and self[:gembinpath]
-      gembinpath = "#{tmpdir}/#{self[:gembinpath]}"
-      FileUtils.mkdir_p(gembinpath)
-      self[:executables].each do |ex|
-        FileUtils.cp("#{installdir}/bin/#{ex}", gembinpath)
-        @paths << "#{self[:gembinpath]}/#{ex}"
+    if not self[:executables].empty?
+      if self[:gembinpath]
+        temp_paths << bindir = "#{tmpdir}/#{self[:gembinpath]}"
+        @paths << self[:gembinpath]
+      elsif self[:prefix]
+        # If a prefix is specified, assume that we don't want a
+        # bindir unless --gembinpath is also specified
+        bindir = nil
+      else
+        temp_paths << bindir = "#{tmpdir}/#{::Gem::bindir}"
+        @paths << ::Gem::bindir
       end
     end
 
+    temp_paths.each { |p| ::FileUtils.mkdir_p(p) }
+    options = [ "--quiet", "--no-ri", "--no-rdoc",
+      "--install-dir", installdir, "--ignore-dependencies" ]
+    options.concat([ "--bindir", bindir ]) if bindir
+    args = [ "gem", "install", *options, gem ]
+    system(*args)
+
     tar(tar_path, @paths.map { |p| ".#{p}" }, tmpdir)
-    FileUtils.rm_r(tmpdir)
+    ::FileUtils.rm_r(tmpdir)
 
     # TODO(sissel): Make a helper method.
     system(*["gzip", "-f", tar_path])
